@@ -2,6 +2,7 @@
 import requests
 from bs4 import BeautifulSoup
 import csv
+from urllib.parse import urljoin
 
 # Constants
 BASE_URL = 'https://quotes.toscrape.com/'
@@ -12,22 +13,50 @@ OUTPUT_FILE = 'quotes.csv'  # Changed to relative path for portability
 
 
 def fetch_page(url):
-    """Fetch a page and return its BeautifulSoup object."""
-    response = requests.get(url, headers=HEADERS)
-    return BeautifulSoup(response.text, 'html.parser')
+    """Fetch a page and return its BeautifulSoup object.
+    
+    Args:
+        url: The URL to fetch
+        
+    Returns:
+        BeautifulSoup object of the page
+        
+    Raises:
+        requests.RequestException: If the HTTP request fails
+    """
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=10)
+        response.raise_for_status()
+        return BeautifulSoup(response.text, 'html.parser')
+    except requests.RequestException as e:
+        print(f"Error fetching page {url}: {e}")
+        raise
 
 
 def extract_quotes_from_page(soup):
-    """Extract all quotes from a BeautifulSoup page object."""
+    """Extract all quotes from a BeautifulSoup page object.
+    
+    Args:
+        soup: BeautifulSoup object of the page
+        
+    Returns:
+        List of dictionaries containing quote data
+    """
     quotes = []
     quote_elements = soup.find_all('div', class_='quote')
     
     for quote_element in quote_elements:
         # Get the text of the quote
-        text = quote_element.find('span', class_='text').text.strip()
+        text_elem = quote_element.find('span', class_='text')
+        if not text_elem:
+            continue
+        text = text_elem.text.strip()
         
         # Get the author
-        author = quote_element.find('small', class_='author').text.strip()
+        author_elem = quote_element.find('small', class_='author')
+        if not author_elem:
+            continue
+        author = author_elem.text.strip()
         
         # Get tags
         tag_elements = quote_element.find_all('a', class_='tag')
@@ -63,7 +92,11 @@ def save_quotes_to_csv(quotes, filename):
 
 
 def scrape_all_quotes():
-    """Scrape all quotes from all pages of the website."""
+    """Scrape all quotes from all pages of the website.
+    
+    Returns:
+        List of all quotes from all pages
+    """
     all_quotes = []
     current_url = BASE_URL
     
@@ -78,8 +111,12 @@ def scrape_all_quotes():
         # Find the next page link
         next_page = soup.find('li', class_='next')
         if next_page:
-            next_page_relative_url = next_page.find('a', href=True)['href']
-            current_url = BASE_URL + next_page_relative_url
+            next_page_link = next_page.find('a', href=True)
+            if next_page_link:
+                next_page_relative_url = next_page_link['href']
+                current_url = urljoin(BASE_URL, next_page_relative_url)
+            else:
+                current_url = None
         else:
             current_url = None
     
